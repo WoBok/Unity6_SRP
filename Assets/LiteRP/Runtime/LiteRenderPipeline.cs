@@ -1,12 +1,42 @@
+using LiteRP.FrameData;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 
 namespace LiteRP
 {
     public class LiteRenderPipeline : RenderPipeline
     {
         readonly static ShaderTagId s_ShaderTagId = new ShaderTagId("SRPDefaultUnlit");
+
+        RenderGraph m_RenderGraph;
+        LiteRenderGraphRecorder m_LiteRenderGraphRecorder;
+        ContextContainer m_ContextContainer;
+
+        public LiteRenderPipeline()
+        {
+            InitializeRenderGraph();
+        }
+        void InitializeRenderGraph()
+        {
+            m_RenderGraph = new RenderGraph("LiteRP Render Graph");
+            m_LiteRenderGraphRecorder = new LiteRenderGraphRecorder();
+            m_ContextContainer = new ContextContainer();
+        }
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            CleanupRenderGraph();
+        }
+        void CleanupRenderGraph()
+        {
+            m_ContextContainer?.Dispose();
+            m_ContextContainer = null;
+            m_LiteRenderGraphRecorder = null;
+            m_RenderGraph?.Cleanup();
+            m_RenderGraph = null;
+        }
         protected override void Render(ScriptableRenderContext context, Camera[] cameras)
         {
 
@@ -41,7 +71,20 @@ namespace LiteRP
 
             EndCameraRendering(context, camera);
         }
-        //Legacy mode
+
+        bool PrepareFrameData(ScriptableRenderContext context, Camera camera)
+        {
+            ScriptableCullingParameters cullingParameters;
+            if (!camera.TryGetCullingParameters(out cullingParameters))
+                return false;
+            CullingResults cullingResults = context.Cull(ref cullingParameters);
+            CameraData cameraData = m_ContextContainer.GetOrCreate<CameraData>();
+            cameraData.camera = camera;//在此处赋值，在Recorder中获取
+            cameraData.cullingResults = cullingResults;
+            return true;
+        }
+
+        #region Legacy mode
         void Render(ScriptableRenderContext context, Camera camera, CommandBuffer cmd)
         {
             if (!camera.TryGetCullingParameters(out var cullingParameters))
@@ -76,5 +119,6 @@ namespace LiteRP
             rendererList = context.CreateRendererList(ref rendererListParmas);
             cmd.DrawRendererList(rendererList);
         }
+        #endregion
     }
 }
